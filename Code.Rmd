@@ -1,0 +1,123 @@
+
+```{r}
+library(tidyverse)
+library(ranger)
+```
+
+
+```{r}
+##Read the parsed data from python
+data<-read.csv("/Users/dishadh/Downloads/HDFS_1/newlog.csv")
+```
+
+
+```{r}
+#Change date format as date and time are different combining then 
+data$date <- paste(data$Date, " " ,data$Time)
+data[['date']] <- as.POSIXct(data[['date']],
+                                   format = "%Y-%m-%d %H:%M:%S")
+data <- subset (data, select = -c(Date,Time))
+```
+
+```{r}
+#Drop rows with NA
+data<-data[!grepl("#N/A", data$Response),]
+```
+```{r}
+unique(data$Response)
+```
+```{r}
+#Group the data by date, block id, process id and response
+gdata <- data %>% group_by(date,Block_ID,PID,Response)
+```
+
+```{r}
+#Factorizing the Response variable
+gdata$Response[(gdata$Response == "Normal") ]<- 0
+gdata$Response[(gdata$Response == "Anomaly") ]<- 1
+gdata$Response <- as.factor(gdata$Response)
+```
+
+```{r}
+#Divide the data into training and testing set
+dt = sort(sample(nrow(gdata), nrow(gdata)*.7))
+gdata.train <- gdata[dt, ]
+gdata.test <- gdata[-dt, ]
+Response <- gdata.test$Response
+gdata.test <-subset(gdata.test, select=-Response)
+
+```
+```{r}
+#Fit random forest
+rf <- ranger(Response ~ ., data = gdata.train, write.forest = TRUE,mtry=3, importance = 'impurity')
+
+```
+
+
+```{r}
+#Print training error and accuracy
+cat("The training prediction error is: ", rf$prediction.error, "for",rf$num.trees," trees","\n")
+cat("The confusion matrix for traiing model is: \n")
+rf$confusion.matrix
+#Output of the random forest
+rf$forest
+```
+```{r}
+#Predict the response variable for the test set
+pred <- predict(rf, data = gdata.test)
+```
+```{r}
+#Print confusion matrix for test set
+cat("The confusion matrix for the test set is: ")
+rf$confusion.matrix
+```
+```{r}
+#Accuracy of training set
+rf$variable.importance
+```
+
+```{r}
+#Feature importance
+ranger::importance(rf)
+```
+
+
+```{r}
+#Delete the columns which hae less importance
+data2 <- subset(gdata, select=-c(root,succeeded))
+```
+
+```{r}
+#Divide data to training and testing set
+dt2 = sort(sample(nrow(data2), nrow(data2)*.7))
+data2.train <- data2[dt2, ]
+data2.test <- data2[-dt2, ]
+Response2 <- data2.test$Response
+data2.test <-subset(data2.test, select=-Response)
+
+```
+```{r}
+#Fit random forest
+ rf2 <- ranger(Response ~ ., data = data2.train, write.forest = TRUE,mtry=3, importance = 'impurity')
+```
+```{r}
+#Calculate the response variable predictions for the test set
+pred2 <- predict(rf2, data = data2.test)
+```
+```{r}
+#Print training error and accuracy
+cat("The training prediction error is: ", rf2$prediction.error, "for",rf2$num.trees," trees","\n")
+cat("The confusion matrix for traiing model is: \n")
+rf2$confusion.matrix
+#Output of the random forest
+rf2
+```
+
+```{r}
+#Print confusion matrix for test set
+cat("The confusion matrix for the test set is: ")
+table(Response2, predictions(pred2))
+```
+
+
+
